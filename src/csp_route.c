@@ -249,9 +249,13 @@ CSP_DEFINE_TASK(csp_task_router) {
 
 		packet = input.packet;
 
-		csp_log_packet("Router input: P 0x%02X, S 0x%02X, D 0x%02X, Dp 0x%02X, Sp 0x%02X, F 0x%02X\r\n",
+		csp_log_packet("Router input on %s: P 0x%02X, S 0x%02X, D 0x%02X, Dp 0x%02X, Sp 0x%02X, F 0x%02X\r\n", input.interface->name,
 				packet->id.pri, packet->id.src, packet->id.dst, packet->id.dport,
 				packet->id.sport, packet->id.flags);
+
+		/* Route learning */
+		routes[packet->id.src].interface = input.interface;
+		routes[packet->id.src].nexthop_mac_addr = CSP_NODE_MAC;
 
 		/* Here there be promiscuous mode */
 #ifdef CSP_USE_PROMISC
