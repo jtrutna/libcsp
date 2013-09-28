@@ -1,11 +1,10 @@
-/*
-  Cubesat Space Protocol - A small network-layer protocol designed for Cubesats
-  Copyright (C) 2012 GomSpace ApS (http://www.gomspace.com)
-  Copyright (C) 2012 AAUSAT3 Project (http://aausat3.space.aau.dk)
-
-  Radio interface using astrodev radios.
-  Copyright (C) 2013 Nanosatisfi (http://www.nanosatisfi.com)
-*/
+/**
+ * CSP Radio interface using astrodev radios.
+ *
+ * @author Francisco Soto <francisco@nanosatisfi.com>
+ *
+ * Copyright (C) 2013 Nanosatisfi (http://www.nanosatisfi.com)
+ */
 
 #include <inttypes.h>
 #include <stdio.h>
@@ -16,7 +15,7 @@
 #include <csp/csp_endian.h>
 #include <csp/csp_platform.h>
 #include <csp/csp_interface.h>
-#include <csp/interfaces/csp_if_radio.h>
+#include <csp/interfaces/csp_if_astrodev.h>
 #include <csp/arch/csp_malloc.h>
 
 typedef struct __attribute__((__packed__)) {
@@ -30,9 +29,9 @@ typedef struct __attribute__((__packed__)) {
     uint8_t pid;
 } ax25_header_t;
 
-static csp_radio_putstr_f radio_tx = NULL;
+static csp_astrodev_putstr_f radio_tx = NULL;
 
-static int csp_radio_tx (csp_packet_t * packet, uint32_t timeout)
+static int csp_astrodev_tx (csp_packet_t * packet, uint32_t timeout)
 {
     int ret = CSP_ERR_NONE;
     int txbufin = packet->length + CSP_HEADER_LENGTH;
@@ -44,7 +43,7 @@ static int csp_radio_tx (csp_packet_t * packet, uint32_t timeout)
     /* Save the outgoing id in the buffer */
     packet->id.ext = csp_hton32(packet->id.ext);
 
-    memcpy(txbufin, &packet->id.ext, txbufin);
+    memcpy(txbuf, &packet->id.ext, txbufin);
 
     csp_buffer_free(packet);
 
@@ -58,12 +57,12 @@ static int csp_radio_tx (csp_packet_t * packet, uint32_t timeout)
     return ret;
 }
 
-void csp_radio_rx (uint8_t *buf, int len)
+void csp_astrodev_rx (uint8_t *buf, int len)
 {
     csp_packet_t *packet;
     ax25_header_t radio_header;
 
-    if (len < sizeof(ax25_header_t) + CSP_HEADER_LENGTH) {
+    if (len < (int)sizeof(ax25_header_t) + CSP_HEADER_LENGTH) {
         csp_log_warn("Weird radio frame received! Size %u\r\n", len);
     }
 
@@ -73,17 +72,17 @@ void csp_radio_rx (uint8_t *buf, int len)
     buf += sizeof(ax25_header_t);
     len -= sizeof(ax25_header_t);
 
-    packet = csp_buffer_get(csp_if_radio.mtu);
+    packet = csp_buffer_get(csp_if_astrodev.mtu);
 
     if (packet != NULL)
         memcpy(&packet->id.ext, buf, len);
 
     packet->length = len;
 
-    csp_if_radio.frame++;
+    csp_if_astrodev.frame++;
 
     if (packet->length >= CSP_HEADER_LENGTH &&
-        packet->length <= csp_if_radio.mtu + CSP_HEADER_LENGTH) {
+        packet->length <= csp_if_astrodev.mtu + CSP_HEADER_LENGTH) {
 
         /* Strip the CSP header off the length field before converting to CSP packet */
         packet->length -= CSP_HEADER_LENGTH;
@@ -92,28 +91,27 @@ void csp_radio_rx (uint8_t *buf, int len)
         packet->id.ext = csp_ntoh32(packet->id.ext);
 
         /* Send back into CSP, notice calling from task so last argument must be NULL! */
-        csp_new_packet(packet, &csp_if_radio, NULL);
+        csp_new_packet(packet, &csp_if_astrodev, NULL);
     }
     else {
         csp_log_warn("Weird radio frame received! Size %u\r\n", packet->length);
         csp_buffer_free(packet);
     }
 }
-}
 
-int csp_radio_init (csp_radio_putstr_f radio_putstr_f)
+int csp_astrodev_init (csp_astrodev_putstr_f astrodev_putstr_f)
 {
-    radio_tx = radio_putstr_f;
+    radio_tx = astrodev_putstr_f;
 
     /* Register interface */
-    csp_route_add_if(&csp_if_radio);
+    csp_route_add_if(&csp_if_astrodev);
 
     return CSP_ERR_NONE;
 }
 
 /** Interface definition */
-csp_iface_t csp_if_radio = {
-    .name = "RADIO",
-    .nexthop = csp_radio_tx,
+csp_iface_t csp_if_astrodev = {
+    .name = "ASTRODEV",
+    .nexthop = csp_astrodev_tx,
     .mtu = 255 - CSP_HEADER_LENGTH,
 };
