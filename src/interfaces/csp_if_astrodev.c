@@ -74,28 +74,29 @@ void csp_astrodev_rx (uint8_t *buf, int len)
 
     packet = csp_buffer_get(csp_if_astrodev.mtu);
 
-    if (packet != NULL)
+    if (packet != NULL) {
         memcpy(&packet->id.ext, buf, len);
 
-    packet->length = len;
+        packet->length = len;
 
-    csp_if_astrodev.frame++;
+        csp_if_astrodev.frame++;
 
-    if (packet->length >= CSP_HEADER_LENGTH &&
-        packet->length <= csp_if_astrodev.mtu + CSP_HEADER_LENGTH) {
+        if (packet->length >= CSP_HEADER_LENGTH &&
+            packet->length <= csp_if_astrodev.mtu + CSP_HEADER_LENGTH) {
 
-        /* Strip the CSP header off the length field before converting to CSP packet */
-        packet->length -= CSP_HEADER_LENGTH;
+            /* Strip the CSP header off the length field before converting to CSP packet */
+            packet->length -= CSP_HEADER_LENGTH;
 
-        /* Convert the packet from network to host order */
-        packet->id.ext = csp_ntoh32(packet->id.ext);
+            /* Convert the packet from network to host order */
+            packet->id.ext = csp_ntoh32(packet->id.ext);
 
-        /* Send back into CSP, notice calling from task so last argument must be NULL! */
-        csp_new_packet(packet, &csp_if_astrodev, NULL);
-    }
-    else {
-        csp_log_warn("Weird radio frame received! Size %u\r\n", packet->length);
-        csp_buffer_free(packet);
+            /* Send back into CSP, notice calling from task so last argument must be NULL! */
+            csp_new_packet(packet, &csp_if_astrodev, NULL);
+        }
+        else {
+            csp_log_warn("Weird radio frame received! Size %u\r\n", packet->length);
+            csp_buffer_free(packet);
+        }
     }
 }
 
