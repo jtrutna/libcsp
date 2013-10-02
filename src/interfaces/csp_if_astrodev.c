@@ -31,8 +31,7 @@ typedef struct __attribute__((__packed__)) {
 
 static csp_astrodev_putstr_f radio_tx = NULL;
 
-static int csp_astrodev_tx (csp_packet_t * packet, uint32_t timeout)
-{
+static int csp_astrodev_tx (csp_packet_t * packet, uint32_t timeout) {
     int ret = CSP_ERR_NONE;
     int txbufin = packet->length + CSP_HEADER_LENGTH;
     uint8_t *txbuf = csp_malloc(txbufin);
@@ -57,8 +56,7 @@ static int csp_astrodev_tx (csp_packet_t * packet, uint32_t timeout)
     return ret;
 }
 
-void csp_astrodev_rx (uint8_t *buf, int len)
-{
+void csp_astrodev_rx (uint8_t *buf, int len) {
     csp_packet_t *packet;
     ax25_header_t radio_header;
 
@@ -100,8 +98,7 @@ void csp_astrodev_rx (uint8_t *buf, int len)
     }
 }
 
-int csp_astrodev_init (csp_astrodev_putstr_f astrodev_putstr_f)
-{
+int csp_astrodev_init (csp_astrodev_putstr_f astrodev_putstr_f) {
     radio_tx = astrodev_putstr_f;
 
     /* Register interface */
