@@ -44,11 +44,12 @@ static int csp_astrodev_tx (csp_packet_t * packet, uint32_t timeout) {
 
     memcpy(txbuf, &packet->id.ext, txbufin);
 
-    csp_buffer_free(packet);
-
     /* The packet goes straigth to the radio. */
     if (radio_tx(txbuf, txbufin) != 0) {
         ret = CSP_ERR_TIMEDOUT;
+    }
+    else {
+        csp_buffer_free(packet);
     }
 
     csp_free(txbuf);
