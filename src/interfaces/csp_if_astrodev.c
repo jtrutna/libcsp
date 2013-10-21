@@ -46,6 +46,7 @@ static int csp_astrodev_tx (csp_packet_t * packet, uint32_t timeout) {
 
     /* The packet goes straigth to the radio. */
     if (radio_tx(txbuf, txbufin) != 0) {
+        csp_if_astrodev.tx_error++;
         ret = CSP_ERR_TIMEDOUT;
     }
     else {
@@ -83,8 +84,6 @@ void csp_astrodev_rx (uint8_t *buf, int len, void *xTaskWoken) {
 
         packet->length = len;
 
-        csp_if_astrodev.frame++;
-
         if (packet->length >= CSP_HEADER_LENGTH &&
             packet->length <= csp_if_astrodev.mtu + CSP_HEADER_LENGTH) {
 
@@ -98,8 +97,12 @@ void csp_astrodev_rx (uint8_t *buf, int len, void *xTaskWoken) {
         }
         else {
             csp_log_warn("Weird radio frame received! Size %u\r\n", packet->length);
+            csp_if_astrodev.frame++;
             csp_buffer_free(packet);
         }
+    }
+    else {
+        csp_if_astrodev.frame++;
     }
 }
 
