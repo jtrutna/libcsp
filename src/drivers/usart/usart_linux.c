@@ -23,6 +23,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/epoll.h>
 #include <time.h>
 #include <pthread.h>
 #include <unistd.h>
@@ -31,6 +32,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 #include <fcntl.h>
 
 #include <csp/csp.h>
+
+#define EPOLL_MAX_EVENTS 16
 
 int fd;
 usart_callback_t usart_callback = NULL;
@@ -196,7 +199,7 @@ void usart_set_callback(usart_callback_t callback) {
 }
 
 void usart_insert(char c, void * pxTaskWoken) {
-	printf("%c", c);
+	putchar(c);
 }
 
 void usart_putstr(char * buf, int len) {
@@ -220,18 +223,46 @@ int usart_messages_waiting(int handle) {
 }
 
 static void *serial_rx_thread(void *vptr_args) {
-	unsigned int length;
-	uint8_t * cbuf = malloc(100000);
+	int efd, n_events, i;
+	struct epoll_event event;
+	struct epoll_event events[EPOLL_MAX_EVENTS];
+	ssize_t count;
+	char buf[512];
+	uint32_t e;
+
+	efd = epoll_create1(0);
+	event.data.fd = fd;
+	event.events = EPOLLIN | EPOLLET;
+	if (epoll_ctl(efd, EPOLL_CTL_ADD, fd, &event) == -1) {
+		printf("Error adding epoll descriptor: %s\r\n", strerror(errno));
+		return NULL;
+	}
 
 	// Receive loop
 	while (1) {
-		length = read(fd, cbuf, 300);
-		if (length <= 0) {
-			perror("Error: ");
-			exit(1);
+		n_events = epoll_wait(efd, events, EPOLL_MAX_EVENTS, -1);
+		for (i = 0; i < n_events; i++) {
+			e = events[i].events;
+			if ((e & EPOLLERR) || (e & EPOLLHUP) || (!(e & EPOLLIN))) {
+				printf("Epoll file descriptor error\n");
+				close(events[i].data.fd);
+				continue;
+			}
+
+			if (fd != events[i].data.fd) {
+				continue;
+			}
+
+			while (1) {
+				count = read(events[i].data.fd, buf, sizeof(buf));
+				if (count <= 0 || !usart_callback) {
+					break;
+				}
+
+				usart_callback(buf, count, NULL);
+			}
 		}
-		if (usart_callback)
-			usart_callback(cbuf, length, NULL);
 	}
+
 	return NULL;
 }
