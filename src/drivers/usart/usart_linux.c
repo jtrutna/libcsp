@@ -96,6 +96,9 @@ int getbaud(int fd) {
 	case B115200:
 		inputSpeed = 115200;
 		break;
+	case B230400:
+		inputSpeed = 230400;
+		break;
 #ifndef CSP_MACOSX
 	case B460800:
 		inputSpeed = 460800;
@@ -148,6 +151,7 @@ void usart_init(struct usart_conf * conf) {
     case 38400:   brate=B38400;   break;
     case 57600:   brate=B57600;   break;
     case 115200:  brate=B115200;  break;
+    case 230400:  brate=B230400;  break;
 #ifndef CSP_MACOSX
     case 460800:  brate=B460800;  break;
     case 500000:  brate=B500000;  break;
