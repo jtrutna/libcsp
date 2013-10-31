@@ -293,8 +293,10 @@ int csp_send_direct(csp_id_t idout, csp_packet_t * packet, uint32_t timeout) {
 	uint16_t bytes = packet->length;
 	uint16_t mtu = ifout->interface->mtu;
 
-	if (mtu > 0 && bytes > mtu)
+	if (mtu > 0 && bytes > mtu) {
+		csp_log_warn("Attempt to send a packet larger than the interface's mtu.\r\n");
 		goto tx_err;
+	}
 
 	if ((*ifout->interface->nexthop)(packet, timeout) != CSP_ERR_NONE)
 		goto tx_err;
