@@ -448,12 +448,10 @@ int csp_route_set(uint8_t node, csp_iface_t *ifc, uint8_t nexthop_mac_addr) {
 }
 
 int csp_route_reset (uint8_t node) {
-	if (node <= CSP_DEFAULT_ROUTE) {
-		memset(&routes[node], 0, sizeof(csp_route_t));
-	}
-	else {
+	if (node > CSP_DEFAULT_ROUTE) {
 		return CSP_ERR_INVAL;
 	}
+	memset(&routes[node], 0, sizeof(csp_route_t));
 	return CSP_ERR_NONE;
 }
 
