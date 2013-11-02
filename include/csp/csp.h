@@ -455,6 +455,11 @@ int csp_route_set(uint8_t node, csp_iface_t *ifc, uint8_t nexthop_mac_addr);
 #define CSP_ROUTE_TABLE_SIZE		5 * CSP_ROUTE_COUNT
 
 /**
+ * Resets route
+ */
+int csp_route_reset (uint8_t node);
+
+/**
  * Clear and init the routing table
  *
  * This function is called by csp_init and should only be needed in case
