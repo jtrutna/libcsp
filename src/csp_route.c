@@ -447,6 +447,16 @@ int csp_route_set(uint8_t node, csp_iface_t *ifc, uint8_t nexthop_mac_addr) {
 
 }
 
+int csp_route_reset (uint8_t node) {
+	if (node <= CSP_DEFAULT_ROUTE) {
+		memset(&routes[node], 0, sizeof(csp_route_t));
+	}
+	else {
+		return CSP_ERR_INVAL;
+	}
+	return CSP_ERR_NONE;
+}
+
 csp_route_t * csp_route_if(uint8_t id) {
 
 	if (routes[id].interface != NULL) {
