@@ -59,7 +59,13 @@ typedef struct {
 	csp_multikiss_putstr_f putstr;
 	csp_multikiss_discard_f discard;
 	volatile short *transmitting;
-} multikiss_callbacks_t;
+	csp_packet_t * packet;
+	int length;
+	volatile unsigned char *cbuf;
+	int mode;
+	int first;
+	char txbuf[300];
+} multikiss_info_t;
 
 static int csp_multikiss_tx0(csp_packet_t * packet, uint32_t timeout);
 static int csp_multikiss_tx1(csp_packet_t * packet, uint32_t timeout);
@@ -76,7 +82,10 @@ csp_iface_t multikiss_ifs[MULTIKISS_MAX_IFS] = {
 	},
 };
 
-multikiss_callbacks_t multikiss_callbacks[MULTIKISS_MAX_IFS];
+multikiss_info_t multikiss_info[MULTIKISS_MAX_IFS] = {
+	{ .length = 0, .mode = KISS_MODE_NOT_STARTED, .first = 1 },
+	{ .length = 0, .mode = KISS_MODE_NOT_STARTED, .first = 1 },
+};
 
 #ifdef MULTIKISS_CRC32
 
@@ -152,11 +161,8 @@ static uint32_t kiss_crc(unsigned char *block, unsigned int length) {
 
 /* Send a CSP packet over the KISS RS232 protocol */
 int csp_multikiss_tx(uint8_t handle, csp_packet_t * packet, uint32_t timeout) {
-
+	char *txbuf = multikiss_info[handle].txbuf;
 	int txbufin = 0;
-	char * txbuf = csp_malloc(packet->length + 30);
-	if (txbuf == NULL)
-		return CSP_ERR_NOMEM;
 
 	/* Save the outgoing id in the buffer */
 	packet->id.ext = csp_hton32(packet->id.ext);
@@ -187,10 +193,9 @@ int csp_multikiss_tx(uint8_t handle, csp_packet_t * packet, uint32_t timeout) {
 	csp_buffer_free(packet);
 
 	/* Beautiful.. </sarcasm> --fms */
-	*(multikiss_callbacks[handle].transmitting) = 1;
-	multikiss_callbacks[handle].putstr(handle, txbuf, txbufin);
-	*(multikiss_callbacks[handle].transmitting) = 0;
-	csp_free(txbuf);
+	*(multikiss_info[handle].transmitting) = 1;
+	multikiss_info[handle].putstr(handle, txbuf, txbufin);
+	*(multikiss_info[handle].transmitting) = 0;
 
 	return CSP_ERR_NONE;
 }
@@ -208,125 +213,120 @@ int csp_multikiss_tx1(csp_packet_t * packet, uint32_t timeout) {
  * and eventually send it directly to the CSP new packet function.
  */
 void csp_multikiss_rx(uint8_t handle, uint8_t * buf, int len, void * pxTaskWoken) {
-
-	static csp_packet_t * packet;
-	static int length = 0;
-	static volatile unsigned char *cbuf;
-	static int mode = KISS_MODE_NOT_STARTED;
-	static int first = 1;
+	multikiss_info_t *info = &multikiss_info[handle];
 
 	while (len) {
 
-		switch (mode) {
+		switch (info->mode) {
 		case KISS_MODE_NOT_STARTED:
 			if (*buf == FEND) {
 				if (pxTaskWoken == NULL) {
-					packet = csp_buffer_get(multikiss_ifs[handle].mtu);
+					info->packet = csp_buffer_get(multikiss_ifs[handle].mtu);
 				} else {
-					packet = csp_buffer_get_isr(multikiss_ifs[handle].mtu);
+					info->packet = csp_buffer_get_isr(multikiss_ifs[handle].mtu);
 				}
 
-				if (packet != NULL) {
-					cbuf = (unsigned char *) &packet->id.ext;
+				if (info->packet != NULL) {
+					info->cbuf = (unsigned char *) &info->packet->id.ext;
 				} else {
-					cbuf = NULL;
+					info->cbuf = NULL;
 				}
 
-				mode = KISS_MODE_STARTED;
-				first = 1;
+				info->mode = KISS_MODE_STARTED;
+				info->first = 1;
 			} else {
 				/* If the char was not part of a kiss frame, send back to usart driver */
-				if (multikiss_callbacks[handle].discard != NULL)
-					multikiss_callbacks[handle].discard(handle, *buf, pxTaskWoken);
+				if (multikiss_info[handle].discard != NULL)
+					multikiss_info[handle].discard(handle, *buf, pxTaskWoken);
 			}
 			break;
 		case KISS_MODE_STARTED:
 			if (*buf == FESC)
-				mode = KISS_MODE_ESCAPED;
+				info->mode = KISS_MODE_ESCAPED;
 			else if (*buf == FEND) {
-				if (length > 0) {
-					mode = KISS_MODE_ENDED;
+				if (info->length > 0) {
+					info->mode = KISS_MODE_ENDED;
 				}
 			} else {
-				if (cbuf != NULL)
-					*cbuf = *buf;
-				if (first) {
-					first = 0;
+				if (info->cbuf != NULL)
+					*(info->cbuf) = *buf;
+				if (info->first) {
+					info->first = 0;
 					break;
 				}
-				if (cbuf != NULL)
-					cbuf++;
-				length++;
+				if (info->cbuf != NULL)
+					info->cbuf++;
+				info->length++;
 			}
 			break;
 		case KISS_MODE_ESCAPED:
 			if (*buf == TFESC) {
-				if (cbuf != NULL)
-					*cbuf++ = FESC;
-				length++;
+				if (info->cbuf != NULL)
+					*(info->cbuf)++ = FESC;
+				info->length++;
 			} else if (*buf == TFEND) {
-				if (cbuf != NULL)
-					*cbuf++ = FEND;
-				length++;
+				if (info->cbuf != NULL)
+					*(info->cbuf)++ = FEND;
+				info->length++;
 			}
-			mode = KISS_MODE_STARTED;
+			info->mode = KISS_MODE_STARTED;
 			break;
 		}
 
 		len--;
 		buf++;
 
-		if (mode == KISS_MODE_ENDED) {
+		if (info->mode == KISS_MODE_ENDED) {
 
-			if (packet == NULL) {
-				mode = KISS_MODE_NOT_STARTED;
-				length = 0;
+			if (info->packet == NULL) {
+				info->mode = KISS_MODE_NOT_STARTED;
+				info->length = 0;
 				continue;
 			}
 
-			packet->length = length;
+			info->packet->length = info->length;
 
 			multikiss_ifs[handle].frame++;
 
-			if (packet->length >= CSP_HEADER_LENGTH && packet->length <= multikiss_ifs[handle].mtu + CSP_HEADER_LENGTH) {
+			if (info->packet->length >= CSP_HEADER_LENGTH && info->packet->length <= multikiss_ifs[handle].mtu + CSP_HEADER_LENGTH) {
 
 #if defined(MULTIKISS_CRC32)
 				uint32_t crc_remote;
-				memcpy(&crc_remote, ((unsigned char *) &packet->id.ext) + packet->length - sizeof(crc_remote), sizeof(crc_remote));
+				memcpy(&crc_remote, ((unsigned char *) &info->packet->id.ext) + info->packet->length - sizeof(crc_remote), sizeof(crc_remote));
 				crc_remote = csp_ntoh32(crc_remote);
-				uint32_t crc_local = kiss_crc((unsigned char *) &packet->id.ext, packet->length - sizeof(crc_remote));
+				uint32_t crc_local = kiss_crc((unsigned char *) &info->packet->id.ext, info->packet->length - sizeof(crc_remote));
 
 				if (crc_remote != crc_local) {
-					csp_log_warn("CRC remote 0x%08"PRIX32", local 0x%08"PRIX32", packlen %u\r\n", crc_remote, crc_local, packet->length);
+					csp_log_warn("CRC remote 0x%08"PRIX32", local 0x%08"PRIX32", packlen %u\r\n", crc_remote, crc_local, info->packet->length);
 					multikiss_ifs[handle].rx_error++;
 					if (pxTaskWoken == NULL) {
-						csp_buffer_free(packet);
+						csp_buffer_free(info->packet);
 					} else {
-						csp_buffer_free_isr(packet);
+						csp_buffer_free_isr(info->packet);
 					}
-					mode = KISS_MODE_NOT_STARTED;
-					length = 0;
+					info->mode = KISS_MODE_NOT_STARTED;
+					info->length = 0;
 					continue;
 				}
 
-				packet->length -= sizeof(crc_remote);
+				info->packet->length -= sizeof(crc_remote);
 #endif
 
 				/* Strip the CSP header off the length field before converting to CSP packet */
-				packet->length -= CSP_HEADER_LENGTH;
+				info->packet->length -= CSP_HEADER_LENGTH;
 
 				/* Convert the packet from network to host order */
-				packet->id.ext = csp_ntoh32(packet->id.ext);
+				info->packet->id.ext = csp_ntoh32(info->packet->id.ext);
 
 				/* Send back into CSP, notice calling from task so last argument must be NULL! */
-				csp_new_packet(packet, &multikiss_ifs[handle], pxTaskWoken);
+				csp_new_packet(info->packet, &multikiss_ifs[handle], pxTaskWoken);
 			} else {
-				csp_log_warn("Weird kiss frame received! Size %u\r\n", packet->length);
-				csp_buffer_free(packet);
+				csp_log_warn("Weird kiss frame received! Size %u\r\n", info->packet->length);
+				csp_buffer_free(info->packet);
 			}
 
-			mode = KISS_MODE_NOT_STARTED;
-			length = 0;
+			info->mode = KISS_MODE_NOT_STARTED;
+			info->length = 0;
 
 		}
 
@@ -350,9 +350,9 @@ int csp_multikiss_init(uint8_t handle, csp_multikiss_putstr_f kiss_putstr_f,
 	}
 
 	/* Store function pointers */
-	multikiss_callbacks[handle].putstr = kiss_putstr_f;
-	multikiss_callbacks[handle].discard = kiss_discard_f;
-	multikiss_callbacks[handle].transmitting = handle == 0 ?
+	multikiss_info[handle].putstr = kiss_putstr_f;
+	multikiss_info[handle].discard = kiss_discard_f;
+	multikiss_info[handle].transmitting = handle == 0 ?
 		&csp_if_multikiss0_transmitting : &csp_if_multikiss1_transmitting;
 
 	/* Regsiter interface */
