@@ -46,7 +46,7 @@ struct usart_conf {
  * Initialise UART with the usart_conf data structure
  * @param usart_conf full configuration structure
  */
-void usart_init(struct usart_conf *conf);
+void usart_init(int handle, struct usart_conf *conf);
 
 /**
  * In order to catch incoming chars use the callback.
@@ -55,14 +55,14 @@ void usart_init(struct usart_conf *conf);
  * @param callback function pointer
  */
 typedef void (*usart_callback_t) (uint8_t *buf, int len, void *pxTaskWoken);
-void usart_set_callback(usart_callback_t callback);
+void usart_set_callback(int handle, usart_callback_t callback);
 
 /**
  * Insert a character to the RX buffer of a usart
  * @param handle usart[0,1,2,3]
  * @param c Character to insert
  */
-void usart_insert(char c, void *pxTaskWoken);
+void usart_insert(int handle, char c, void *pxTaskWoken);
 
 /**
  * Polling putchar
@@ -70,7 +70,7 @@ void usart_insert(char c, void *pxTaskWoken);
  * @param handle usart[0,1,2,3]
  * @param c Character to transmit
  */
-void usart_putc(char c);
+void usart_putc(int handle, char c);
 
 /**
  * Send char buffer on UART
@@ -79,7 +79,7 @@ void usart_putc(char c);
  * @param buf Pointer to data
  * @param len Length of data
  */
-void usart_putstr(char *buf, int len);
+void usart_putstr(int handle, char *buf, int len);
 
 /**
  * Buffered getchar
@@ -87,6 +87,6 @@ void usart_putstr(char *buf, int len);
  * @param handle usart[0,1,2,3]
  * @return Character received
  */
-char usart_getc(void);
+char usart_getc(int handle);
 
 #endif /* USART_H_ */

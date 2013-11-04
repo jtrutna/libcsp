@@ -34,114 +34,25 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 #include <csp/csp.h>
 
 #define EPOLL_MAX_EVENTS 16
+#define MAX_USARTS 4
 
-int fd;
-usart_callback_t usart_callback = NULL;
+typedef struct {
+	int fd;
+	usart_callback_t usart_callback;
+} usart_linux_t;
+
+usart_linux_t usarts[MAX_USARTS];
 
 static void *serial_rx_thread(void *vptr_args);
 
-int getbaud(int fd) {
-	struct termios termAttr;
-	int inputSpeed = -1;
-	speed_t baudRate;
-	tcgetattr(fd, &termAttr);
-	/* Get the input speed. */
-	baudRate = cfgetispeed(&termAttr);
-	switch (baudRate) {
-	case B0:
-		inputSpeed = 0;
-		break;
-	case B50:
-		inputSpeed = 50;
-		break;
-	case B110:
-		inputSpeed = 110;
-		break;
-	case B134:
-		inputSpeed = 134;
-		break;
-	case B150:
-		inputSpeed = 150;
-		break;
-	case B200:
-		inputSpeed = 200;
-		break;
-	case B300:
-		inputSpeed = 300;
-		break;
-	case B600:
-		inputSpeed = 600;
-		break;
-	case B1200:
-		inputSpeed = 1200;
-		break;
-	case B1800:
-		inputSpeed = 1800;
-		break;
-	case B2400:
-		inputSpeed = 2400;
-		break;
-	case B4800:
-		inputSpeed = 4800;
-		break;
-	case B9600:
-		inputSpeed = 9600;
-		break;
-	case B19200:
-		inputSpeed = 19200;
-		break;
-	case B38400:
-		inputSpeed = 38400;
-		break;
-	case B57600:
-		inputSpeed = 57600;
-		break;
-	case B115200:
-		inputSpeed = 115200;
-		break;
-	case B230400:
-		inputSpeed = 230400;
-		break;
-#ifndef CSP_MACOSX
-	case B460800:
-		inputSpeed = 460800;
-		break;
-	case B500000:
-		inputSpeed = 500000;
-		break;
-	case B921600:
-		inputSpeed = 921600;
-		break;
-	case B1000000:
-		inputSpeed = 1000000;
-		break;
-	case B1500000:
-		inputSpeed = 1500000;
-		break;
-	case B2000000:
-		inputSpeed = 2000000;
-		break;
-	case B2500000:
-		inputSpeed = 2500000;
-		break;
-	case B3000000:
-		inputSpeed = 3000000;
-		break;
-#endif
-	}
-
-	return inputSpeed;
-
-}
-
-void usart_init(struct usart_conf * conf) {
+void usart_init(int handle, struct usart_conf * conf) {
 
 	struct termios options;
 	pthread_t rx_thread;
 
-	fd = open(conf->device, O_RDWR | O_NOCTTY | O_NONBLOCK);
+	usarts[handle].fd = open(conf->device, O_RDWR | O_NOCTTY | O_NONBLOCK);
 
-	if (fd < 0) {
+	if (usarts[handle].fd < 0) {
 		printf("Failed to open %s: %s\r\n", conf->device, strerror(errno));
 		return;
 	}
@@ -167,7 +78,7 @@ void usart_init(struct usart_conf * conf) {
 #endif
     }
 
-	tcgetattr(fd, &options);
+	tcgetattr(usarts[handle].fd, &options);
 	cfsetispeed(&options, brate);
 	cfsetospeed(&options, brate);
 	options.c_cflag |= (CLOCAL | CREAD);
@@ -180,41 +91,41 @@ void usart_init(struct usart_conf * conf) {
 	options.c_oflag &= ~(OCRNL | ONLCR | ONLRET | ONOCR | OFILL | OPOST);
 	options.c_cc[VTIME] = 0;
 	options.c_cc[VMIN] = 1;
-	tcsetattr(fd, TCSANOW, &options);
-	if (tcgetattr(fd, &options) == -1)
+	tcsetattr(usarts[handle].fd, TCSANOW, &options);
+	if (tcgetattr(usarts[handle].fd, &options) == -1)
 		perror("error setting options");
-	fcntl(fd, F_SETFL, 0);
+	fcntl(usarts[handle].fd, F_SETFL, 0);
 
 	/* Flush old transmissions */
-	if (tcflush(fd, TCIOFLUSH) == -1)
+	if (tcflush(usarts[handle].fd, TCIOFLUSH) == -1)
 		printf("Error flushing serial port - %s(%d).\n", strerror(errno), errno);
 
-	if (pthread_create(&rx_thread, NULL, serial_rx_thread, NULL) != 0)
+	if (pthread_create(&rx_thread, NULL, serial_rx_thread, &usarts[handle]) != 0)
 		return;
 
 }
 
-void usart_set_callback(usart_callback_t callback) {
-	usart_callback = callback;
+void usart_set_callback(int handle, usart_callback_t callback) {
+	usarts[handle].usart_callback = callback;
 }
 
-void usart_insert(char c, void * pxTaskWoken) {
+void usart_insert(int handle, char c, void * pxTaskWoken) {
 	putchar(c);
 }
 
-void usart_putstr(char * buf, int len) {
-	if (write(fd, buf, len) != len)
+void usart_putstr(int handle, char * buf, int len) {
+	if (write(usarts[handle].fd, buf, len) != len)
 		return;
 }
 
-void usart_putc(char c) {
-	if (write(fd, &c, 1) != 1)
+void usart_putc(int handle, char c) {
+	if (write(usarts[handle].fd, &c, 1) != 1)
 		return;
 }
 
-char usart_getc(void) {
+char usart_getc(int handle) {
 	char c;
-	if (read(fd, &c, 1) != 1) return 0;
+	if (read(usarts[handle].fd, &c, 1) != 1) return 0;
 	return c;
 }
 
@@ -229,11 +140,12 @@ static void *serial_rx_thread(void *vptr_args) {
 	ssize_t count;
 	char buf[512];
 	uint32_t e;
+	usart_linux_t *usart = (usart_linux_t *) vptr_args;
 
 	efd = epoll_create1(0);
-	event.data.fd = fd;
+	event.data.fd = usart->fd;
 	event.events = EPOLLIN | EPOLLET;
-	if (epoll_ctl(efd, EPOLL_CTL_ADD, fd, &event) == -1) {
+	if (epoll_ctl(efd, EPOLL_CTL_ADD, usart->fd, &event) == -1) {
 		printf("Error adding epoll descriptor: %s\r\n", strerror(errno));
 		return NULL;
 	}
@@ -249,17 +161,17 @@ static void *serial_rx_thread(void *vptr_args) {
 				continue;
 			}
 
-			if (fd != events[i].data.fd) {
+			if (usart->fd != events[i].data.fd) {
 				continue;
 			}
 
 			while (1) {
 				count = read(events[i].data.fd, buf, sizeof(buf));
-				if (count <= 0 || !usart_callback) {
+				if (count <= 0 || !usart->usart_callback) {
 					break;
 				}
 
-				usart_callback(buf, count, NULL);
+				usart->usart_callback(buf, count, NULL);
 			}
 		}
 	}
