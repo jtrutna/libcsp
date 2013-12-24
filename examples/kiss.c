@@ -12,6 +12,8 @@
 #define CLIENT_TIDX 1
 #define USART_HANDLE 0
 
+csp_iface_t csp_if_kiss;
+
 CSP_DEFINE_TASK(task_server) {
     int running = 1;
     csp_socket_t *socket = csp_socket(CSP_SO_NONE);
