@@ -24,3 +24,9 @@ where CHIP is one of 'socketcan', 'at91sam7a1', 'at91sam7a3' or 'at90can128'.
 To build and copy the library to the location specified with --prefix, use:
 
 		./waf build install
+
+Building Examples
+=======================
+gcc examples/simple.c -I ./include/ -I ./build/include/ -L ./build -lcsp -lpthread -lrt -o simple
+
+
